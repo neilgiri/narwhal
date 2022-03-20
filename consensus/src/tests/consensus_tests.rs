@@ -134,7 +134,7 @@ async fn dead_node() {
     // Make the certificates.
     let mut keys: Vec<_> = keys().into_iter().map(|(x, _)| x).collect();
     keys.sort(); // Ensure we don't remove one of the leaders.
-    //let _ = keys.pop().unwrap();
+                 //let _ = keys.pop().unwrap();
 
     let genesis = Certificate::genesis(&mock_committee())
         .iter()
@@ -167,7 +167,7 @@ async fn dead_node() {
     for i in 1..=24 {
         let certificate = rx_output.recv().await.unwrap();
         let expected = ((i - 1) / keys.len() as u64) + 1;
-        println!("{}, {}, {}", certificate.round(), expected, keys.len());
+        //println!("{}, {}, {}", certificate.round(), expected, keys.len());
         assert_eq!(certificate.round(), expected);
     }
     let certificate = rx_output.recv().await.unwrap();
@@ -274,7 +274,7 @@ async fn not_enough_support() {
     assert_eq!(certificate.round(), 1);
 }
 
-// Run for 7 dag rounds. Node 0 (the leader of round 2) is missing for rounds 1 and 2,
+// Run for 5 dag rounds. Node 0 (the leader of round 2) is missing for rounds 1 and 2,
 // and reappears from round 3.
 #[tokio::test]
 async fn missing_leader() {
