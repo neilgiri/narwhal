@@ -179,6 +179,19 @@ impl Consensus {
                 }
             }*/
 
+            let r = round - 1;
+
+            // Elect leaders every even round
+            if r % 2 != 0 || r < 2 {
+                continue;
+            }
+
+            // Get the certificate's digest of the leader. If we already ordered this leader, there is nothing to do.
+            let leader_round = r-1;
+            if leader_round <= state.last_committed_round {
+                continue;
+            }
+
             let leader = match self.update_validator_mode(&certificate, &mut state) {
                 Some(x) => x.clone(),
                 None => continue,
@@ -270,17 +283,19 @@ impl Consensus {
 
         // Otherwise the certificate is in fallback mode
         state.fb_validator_sets.entry(fb_wave).or_insert(BTreeSet::new()).insert(certificate.origin());
-        println!("ss_size {} {}", certificate.round(), state.ss_validator_sets.entry(ss_wave).or_insert(BTreeSet::new()).len());
+        //println!("fb_size round {} wave {} size {}", certificate.round(), fb_wave, state.fb_validator_sets.entry(fb_wave).or_insert(BTreeSet::new()).len());
 
         return None;
     }
 
     // Checks whether there is a steady state wave commit
     fn try_steady_commit(&self, certificate: &Certificate, ss_wave: u64, state: &mut State) -> Option<Certificate> {
+        let dag = &state.dag;
+
         // Get the steady state leader of the current ss_wave
-        println!("sswave {}", ss_wave);
+        //println!("sswave {}", ss_wave);
         let ss_leader_round = 2 * ss_wave - 1;
-        let (leader_digest, leader) = match self.leader(ss_leader_round, &state.dag) {
+        let (_, leader) = match self.leader(ss_leader_round, &state.dag) {
                 Some(x) => x,
                 None => panic!("Empty"),
             };
@@ -293,11 +308,11 @@ impl Consensus {
                 .get(&(certificate.round() - 1))
                 .expect("Should have previous round certificates")
                 .values()
-                .filter(|(d, x)| certificate.header.parents.contains(d) && x.header.parents.contains(leader_digest))
+                .filter(|(d, x)| certificate.header.parents.contains(d) && self.linked(x, leader, dag))
                 .filter(|(_, x)| ss_sets.contains(&x.origin()))
                 .map(|(_, x)| self.committee.stake(&x.origin()))
                 .sum();
-        println!("stake {}", stake);
+        println!("ss stake {}", stake);
         // Commit if there is at least 2f+1 steady state votes
         if stake >= self.committee.quorum_threshold() {
             return Some(leader.clone());
@@ -307,14 +322,17 @@ impl Consensus {
 
     // Checks whether there is a fallback wave commit
     fn try_fallback_commit(&self, certificate: &Certificate, fb_wave: u64, state: &mut State) -> Option<Certificate> {
+        let dag = &state.dag;
+
         // Get the current fallback leader of the current fb_wave
         let fb_leader_round = 4 * fb_wave - 3;
-        let (leader_digest, leader) = match self.fb_leader(fb_leader_round, &state.dag) {
+        let (_, leader) = match self.fb_leader(fb_leader_round, &state.dag) {
                 Some(x) => x,
                 None => panic!("Empty"),
             };
 
         let fb_sets = state.fb_validator_sets.entry(fb_wave).or_insert(BTreeSet::new());
+        println!("commit round {} fbwave {} size {}", certificate.round(), fb_wave, fb_sets.len());
 
         // Find the potential votes of certificates in fallback mode
         let stake: Stake = state
@@ -322,10 +340,12 @@ impl Consensus {
                 .get(&(certificate.round() - 1))
                 .expect("Should have previous round certificates")
                 .values()
-                .filter(|(d, x)| certificate.header.parents.contains(d) && x.header.parents.contains(leader_digest))
+                .filter(|(d, x)| certificate.header.parents.contains(d) && self.linked(x, leader, dag))
                 .filter(|(_, x)| fb_sets.contains(&x.origin()))
                 .map(|(_, x)| self.committee.stake(&x.origin()))
                 .sum();
+        
+        println!("fb stake {}", stake);
         // Commit if there is at least 2f+1 fallback votes
         if stake >= self.committee.quorum_threshold() {
             return Some(leader.clone());
@@ -359,7 +379,7 @@ impl Consensus {
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
         #[cfg(test)]
-        let seed = 0;
+        let seed = 1;
         #[cfg(not(test))]
         let seed = round+1;
 
