@@ -179,6 +179,11 @@ impl Consensus {
                 }
             }*/
 
+            let leader = match self.update_validator_mode(&certificate, &mut state) {
+                Some(x) => x.clone(),
+                None => continue,
+            };
+
             let r = round - 1;
 
             // Elect leaders every even round
@@ -192,10 +197,6 @@ impl Consensus {
                 continue;
             }
 
-            let leader = match self.update_validator_mode(&certificate, &mut state) {
-                Some(x) => x.clone(),
-                None => continue,
-            };
 
             // Get an ordered list of past leaders that are linked to the current leader.
             debug!("Leader {:?} has enough support", leader);
@@ -297,7 +298,7 @@ impl Consensus {
         let ss_leader_round = 2 * ss_wave - 1;
         let (_, leader) = match self.leader(ss_leader_round, &state.dag) {
                 Some(x) => x,
-                None => panic!("Empty"),
+                None => return None,
             };
 
         let ss_sets = state.ss_validator_sets.entry(ss_wave).or_insert(BTreeSet::new());
@@ -312,7 +313,7 @@ impl Consensus {
                 .filter(|(_, x)| ss_sets.contains(&x.origin()))
                 .map(|(_, x)| self.committee.stake(&x.origin()))
                 .sum();
-        println!("ss stake {}", stake);
+        println!("ss stake {} round {} sswave {} size {}", stake, certificate.round(), ss_wave, ss_sets.len());
         // Commit if there is at least 2f+1 steady state votes
         if stake >= self.committee.quorum_threshold() {
             return Some(leader.clone());
@@ -328,7 +329,7 @@ impl Consensus {
         let fb_leader_round = 4 * fb_wave - 3;
         let (_, leader) = match self.fb_leader(fb_leader_round, &state.dag) {
                 Some(x) => x,
-                None => panic!("Empty"),
+                None => return None,
             };
 
         let fb_sets = state.fb_validator_sets.entry(fb_wave).or_insert(BTreeSet::new());
